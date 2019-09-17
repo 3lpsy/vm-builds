@@ -1,0 +1,71 @@
+{
+  "variables": {
+    "iso_checksum_url": "https://cdimage.kali.org/kali-2019.2/SHA1SUMS",
+    "iso_checksum_type": "sha1",
+    "iso_url": "https://cdimage.kali.org/kali-2019.2/kali-linux-light-2019.2-amd64.iso",
+    "ssh_timeout": "10m",
+    "country": "US",
+    "headless": "true",
+    "vm_name": "kali-bounty",
+    "format": "qcow2",
+    "output": "output",
+    "version": "1.0.0"
+  },
+  "builders": [
+    {
+      "type": "qemu",
+      "accelerator": "kvm",
+      "vm_name": "{{ user `vm_name` }}-{{ user `version` }}.{{ user `format` }}",
+      "output_directory": "{{ user `output` }}",
+      "format": "{{ user `format` }}",
+      "iso_url": "{{user `iso_url`}}",
+      "iso_checksum_url": "{{user `iso_checksum_url`}}",
+      "iso_checksum_type": "{{user `iso_checksum_type`}}",
+      "ssh_username": "root",
+      "ssh_password": "vagrant",
+      "ssh_timeout": "{{ user `ssh_timeout` }}",
+      "http_directory": "http",
+      "headless": "{{ user `true`}}",
+      "boot_wait": "5s",
+      "boot_command": [
+        "<esc><wait>",
+        "auto url=http://{{ .HTTPIP }}:{{ .HTTPPort }}/preseed.cfg <wait>",
+        "locale=en_US <wait>",
+        "keymap=us <wait>",
+        "<enter><wait>"
+      ],
+      "qemuargs": [
+        ["-m", "8192m"],
+        ["--cpu", "host"],
+        ["--no-acpi"],
+        ["-vga", "qxl"],
+        ["-smp", "8"]
+      ],
+      "disk_size": 16384
+    }
+  ],
+  "provisioners": [
+    {
+      "type": "shell",
+      "scripts": [
+        "scripts/provision.update.sh",
+        "scripts/provision.install.sh",
+        "scripts/provision.sshd.sh",
+        "scripts/provision.networking.sh",
+        "scripts/provision.vagrant.sh",
+        "scripts/provision.custom.sh",
+        "scripts/provision.cleanup.sh",
+        "scripts/provision.minimize.sh"
+      ],
+      "pause_before": "10s"
+    }
+  ],
+  "post-processors": [
+    {
+      "type": "vagrant",
+      "output": "box/{{.Provider}}/{{user `vm_name`}}-{{user `version`}}.box",
+      "only": ["qemu"],
+      "vagrantfile_template": "Vagrantfile.template"
+    }
+  ]
+}

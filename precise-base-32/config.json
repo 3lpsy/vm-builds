@@ -1,0 +1,89 @@
+{
+  "variables": {
+    "iso_url": "http://releases.ubuntu.com/12.04/ubuntu-12.04.5-server-i386.iso",
+    "iso_checksum_url": "http://releases.ubuntu.com/12.04/SHA1SUMS",
+    "iso_checksum_type": "sha1",
+    "ssh_timeout": "10m",
+    "country": "US",
+    "headless": "true",
+    "username": "{{ env `USERNAME` }}",
+    "user_password": "{{ env `USER_PASSWORD` }}",
+    "vm_name": "precise32",
+    "format": "qcow2",
+    "output": "output",
+    "version": "1.0.0"
+  },
+  "sensitive-variables": [
+    "full_disk_encryption_password",
+    "user_name",
+    "user_password"
+  ],
+  "builders": [
+    {
+      "type": "qemu",
+      "accelerator": "kvm",
+      "vm_name": "{{ user `vm_name` }}-{{ user `version` }}.{{ user `format` }}",
+      "output_directory": "{{ user `output` }}",
+      "format": "{{ user `format` }}",
+      "iso_url": "{{ user `iso_url` }}",
+      "iso_checksum_url": "{{ user `iso_checksum_url` }}",
+      "iso_checksum_type": "{{ user `iso_checksum_type` }}",
+      "ssh_username": "vagrant",
+      "ssh_password": "vagrant",
+      "ssh_timeout": "{{ user `ssh_timeout` }}",
+      "http_directory": "http",
+      "headless": "{{ user `true`}}",
+      "boot_wait": "5s",
+      "boot_command": [
+        "<esc><wait>",
+        "<esc><wait>",
+        "<enter><wait>",
+        "/install/vmlinuz<wait>",
+        " auto<wait>",
+        " console-setup/ask_detect=false<wait>",
+        " console-setup/layoutcode=us<wait>",
+        " console-setup/modelcode=pc105<wait>",
+        " debconf/frontend=noninteractive<wait>",
+        " debian-installer=en_US<wait>",
+        " fb=false<wait>",
+        " initrd=/install/initrd.gz<wait>",
+        " kbd-chooser/method=us<wait>",
+        " keyboard-configuration/layout=USA<wait>",
+        " keyboard-configuration/variant=USA<wait>",
+        " locale=en_US<wait>",
+        " netcfg/get_domain=vm<wait>",
+        " netcfg/get_hostname=vagrant<wait>",
+        " noapic<wait>",
+        " preseed/url=http://{{ .HTTPIP }}:{{ .HTTPPort }}/preseed.cfg<wait>",
+        " -- <wait>",
+        "<enter><wait>"
+      ],
+      "disk_size": 81920,
+      "shutdown_command": "echo 'vagrant'|sudo -S shutdown -P now"
+    }
+  ],
+  "provisioners": [
+    {
+      "type": "shell",
+      "inline": ["echo 'Who is vagrant?'", "whoami", "id"]
+    },
+    {
+      "type": "shell",
+      "execute_command": "echo 'vagrant' | {{.Vars}} sudo -S -E bash '{{.Path}}'",
+      "script": "./scripts/provision.sudo.sh"
+    },
+    {
+      "type": "shell",
+      "execute_command": "{{ .Vars }} sudo -E -S bash '{{ .Path }}'",
+      "script": "./scripts/provision.setup.sh"
+    }
+  ],
+  "post-processors": [
+    {
+      "keep_input_artifact": false,
+      "output": "box/{{.Provider}}/{{user `vm_name`}}-{{user `version`}}.box",
+      "type": "vagrant",
+      "vagrantfile_template": "{{ user `vagrantfile_template` }}"
+    }
+  ]
+}

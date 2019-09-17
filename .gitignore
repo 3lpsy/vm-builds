@@ -1,0 +1,16 @@
+# ignore outputs
+*/output/*.box
+*/output/*.qcow2
+*/output/*/*.box
+*/box/*/*.box
+
+*/output-*/*
+
+# ignore packer caches
+*/packer_cache
+
+# ignore envs if present
+=
+*.env
+env.sh
+
