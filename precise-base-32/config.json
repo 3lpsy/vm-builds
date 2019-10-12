@@ -58,7 +58,7 @@
         " -- <wait>",
         "<enter><wait>"
       ],
-      "disk_size": 81920,
+      "disk_size": 16384,
       "shutdown_command": "echo 'vagrant'|sudo -S shutdown -P now"
     }
   ],

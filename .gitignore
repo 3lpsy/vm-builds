@@ -3,9 +3,8 @@
 */output/*.qcow2
 */output/*/*.box
 */box/*/*.box
-
 */output-*/*
-
+*/drivers/*
 # ignore packer caches
 */packer_cache
 
