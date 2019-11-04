@@ -1,0 +1,33 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+Vagrant.configure("2") do |config|
+    config.vm.box = "generic/ubuntu1604"
+    config.vm.synced_folder '.', '/vagrant', disabled: true   
+    config.vm.synced_folder "../", "/mnt/host", type: '9p', disabled: false, accessmode: "squash"
+    config.vm.network :private_network, :type => "dhcp"
+    config.vm.provider :libvirt do |libvirt|
+        libvirt.driver = "kvm" # or qemu
+        libvirt.graphics_type = "spice"
+        libvirt.socket = "/var/run/libvirt/libvirt-sock"
+        libvirt.cpus = 4
+        libvirt.video_type = "qxl"
+        libvirt.memory = 8192
+        libvirt.machine_virtual_size = 16
+        libvirt.video_vram = 32768
+        libvirt.channel :type => 'spicevmc', :target_name => 'com.redhat.spice.0', :target_type => 'virtio'
+        libvirt.management_network_name = "vamgbr0"
+        libvirt.management_network_address = "192.168.60.0/24"
+        libvirt.management_network_device = "vamgbr0"
+    end
+  
+    config.vm.provision "shell", inline: <<-SHELL
+      sudo apt-get update
+      sudo apt-get install -y lubuntu-desktop
+      sudo apt-get -y install qemu-kvm qemu virt-manager virt-viewer libvirt-bin
+      export VER="1.4.1"
+      wget https://releases.hashicorp.com/packer/${VER}/packer_${VER}_linux_amd64.zip
+      unzip packer_${VER}_linux_amd64.zip
+      sudo mv packer /usr/local/bin
+    SHELL
+end
