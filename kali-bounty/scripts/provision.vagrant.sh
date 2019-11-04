@@ -13,6 +13,8 @@ chmod 600 $HOME_DIR/.ssh/authorized_keys
 # chown -R vagrant $HOME_DIR/.ssh;
 # chmod -R go-rwsx $HOME_DIR/.ssh;
 
+echo "Disabling ssh password use";
+
 # Disable password based SSH for all users now that we have a key in place
 if $(grep -q '^PasswordAuthentication yes' /etc/ssh/sshd_config)
 then
@@ -20,3 +22,5 @@ then
 else
     echo 'PasswordAuthentication no' >> /etc/ssh/sshd_config
 fi
+
+echo "Disabling ssh password use complete";
