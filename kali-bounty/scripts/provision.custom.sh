@@ -1,4 +1,5 @@
-#!/bin/sh -eux
+#!/bin/bash
+
 
 # trigger errors
 set -e; 
@@ -209,14 +210,12 @@ if [ ! -d ${TOOL_DIR}/subfinder ]; then
     echo "Setting up: SubFinder";
     sudo git clone https://github.com/subfinder/subfinder.git ${TOOL_DIR}/subfinder;
     cd ${TOOL_DIR}/subfinder;
-    ## SubFinder Binary (Releases too old)
     sudo $GO get github.com/subfinder/subfinder
     sudo $GO build;
     sudo chmod +x subfinder;
     sudo ln -s ${TOOL_DIR}/subfinder/subfinder /usr/local/bin/subfinder;
     cd -;
 fi
-
 
 function tomnomnom_install() {
     tool="$1"
@@ -489,12 +488,13 @@ else
     sudo gsettings set org.gnome.settings-daemon.plugins.power idle-dim false || echo 'Failed Gnome Setting';
     sudo gsettings set org.gnome.desktop.session idle-delay 0 || echo 'Failed Gnome Setting';
     sudo gsettings set org.gnome.desktop.screensaver lock-enabled true || echo 'Failed Gnome Setting';
-    echo "/usr/sbin/gdm3" > /etc/X11/default-display-manager
+    echo "/usr/sbin/gdm3" | sudo tee /etc/X11/default-display-manager
+    echo "set shared/default-x-display-manager gdm3" | sudo debconf-communicate || echo "Issue setting default-x-disaply-manager";
     sudo systemctl disable lightdm || echo "Issue with: systemctl disable lightdm";
-    sudo apt-get purge -y lightdm || echo "Issue with: apt-get purge -y lightdm ";
-    sudo apt-get purge -y lightdm || echo "Issue with: apt-get purge -y lightdm ";
-    sudo apt-get purge -y gdm3 || echo "Issue with: apt-get purge -y gdm3";
-    sudo apt-get install -y gdm3 || echo "Issue: with apt-get install -y gdm3";
+    sudo DEBCONF_NONINTERACTIVE_SEEN=true DEBIAN_FRONTEND=noninteractive apt-get purge -y lightdm || echo "Issue with: apt-get purge -y lightdm ";
+    sudo DEBCONF_NONINTERACTIVE_SEEN=true DEBIAN_FRONTEND=noninteractive apt-get purge -y lightdm || echo "Issue with: apt-get purge -y lightdm ";
+    sudo DEBCONF_NONINTERACTIVE_SEEN=true DEBIAN_FRONTEND=noninteractive apt-get purge -y gdm3 || echo "Issue with: apt-get purge -y gdm3";
+    sudo DEBCONF_NONINTERACTIVE_SEEN=true DEBIAN_FRONTEND=noninteractive apt-get install -y gdm3 || echo "Issue: with apt-get install -y gdm3";
     sudo apt-get install -y gnome-shell-extension-dashtodock || echo "Issue with: apt-get install -y gnome-shell-extension-dashtodock"
     sudo gsettings set org.gnome.shell.extensions.dash-to-dock dash-max-icon-size 48 || echo "Issue with: gsettings set org.gnome.shell.extensions.dash-to-dock dash-max-icon-size 48"
     sudo systemctl enable gdm3 || echo "Issue: with systemctl enable gdm3";
