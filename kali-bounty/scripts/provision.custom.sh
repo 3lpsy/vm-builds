@@ -1,14 +1,87 @@
 #!/bin/sh -eux
+
+# trigger errors
+set -e; 
+
+if [  -n "$(uname -a | grep -i ubuntu)" ]; then 
+    SUDOER="ubuntu"
+else
+    SUDOER="vagrant"
+    sudo useradd -m -s /bin/bash -u 1000 $SUDOER || echo "Problem creating $SUDOER  user";
+    sudo groupmod -g 1001 $SUDOER || echo "Problem settin $SUDOER  group uid";
+    echo "${SUDOER}:${SUDOER}" | sudo chpasswd || echo "Problem setting $SUDOER password";
+    sudo cp -R /root/.ssh /home/$SUDOER/.ssh || echo "Problem copying $SUDOER .ssh folder";
+    sudo chown -R $SUDOER:$SUDOER /home/$SUDOER/.ssh || echo "Probem changing .ssh perms for $SUDOER  user";
+    sudo cp /root/.profile /home/$SUDOER/ || echo "Problem copying .profile for $SUDOER user";
+    sudo chown $SUDOER:$SUDOER /home/$SUDOER/.profile || echo "Problem changing .profile perms";
+    sudo mkdir /mnt/host || echo "Probelm creating /mnt/host";
+    sudo chown $SUDOER:$SUDOER /mnt/host || echo "Problem changing perms for /mnt/host for $SUDOER  user";
+fi
+
 TOOL_DIR=${TOOL_DIR:-/opt}
+SECLISTS_VER="2019.4"
+GOBUSTER_VER="v3.0.1"
+AMASS_VER="v3.3.2"
+AMASS_NAME="amass_${AMASS_VER}_linux_amd64"
+AQUATONE_VER="1.7.0"
 
 export DEBIAN_FRONTEND=noninteractive;
 
 echo "Starting Custom installs";
 
-echo "Installing basic dependencies and packages: git seclists golang gobuster vim masscan mlocate tmux masscan burpsuite zaproxy";
 
 # Put apps here to be installed
-apt-get install -y git python3-dev python3-pip python-pip unzip seclists golang gobuster vim masscan mlocate tmux masscan nikto burpsuite zaproxy;
+
+echo "Installing some programs"
+sudo apt-get install -y git unzip p7zip-full vim masscan mlocate tmux masscan nikto whois nmap jq wfuzz sqlmap cewl awscli dnsutils;
+
+
+if [  -n "$(uname -a | grep -i ubuntu)" ]; then 
+
+    echo "Performing Ubuntu Specific setup..."
+    sudo apt-get install -y snapd
+        # manually add 1.13
+    sudo wget https://dl.google.com/go/go1.13.3.linux-amd64.tar.gz -O /tmp/golang.tar.gz;
+    cd /tmp/;
+    sudo tar -xvzf /tmp/golang.tar.gz
+    sudo mv go /usr/local/go;
+    export GOROOT=/usr/local/go
+    export GOPATH=/root/.go; 
+    export PATH=$GOPATH/bin:$GOROOT/bin:$PATH
+    GO="GOROOT=/usr/local/go GOPATH=/root/.go PATH=$GOPATH/bin:$GOROOT/bin:$PATH /usr/local/go/bin/go"
+    echo 'export GOROOT=/usr/local/go' | sudo tee -a /root/.bashrc;
+    echo 'export GOPATH=/root/.go' | sudo tee -a /root/.bashrc;
+    echo 'export PATH=$GOPATH/bin:$GOROOT/bin:$PATH' | sudo tee -a /root/.bashrc;
+
+    if [[ -d /home/$SUDOER ]]; then 
+        echo 'export GOROOT=/usr/local/go' | sudo tee -a /home/$SUDOER/.bashrc;
+        echo "export GOPATH=/home/${SUDOER}/.go" | sudo tee -a /home/$SUDOER/.bashrc;
+        echo 'export PATH=$GOPATH/bin:$GOROOT/bin:$PATH' | sudo tee -a /home/$SUDOER/.bashrc;
+        sudo chown  ${SUDOER}:${SUDOER} /home/${SUDOER}/.bashrc
+    fi
+    echo "Setting up: Zaproxy";
+    sudo snap install zaproxy  --classic
+    echo "Installing: eyewitness + Aquatone Dependencies";
+    sudo apt-get install -y firefox chromium-browser xvfb
+else
+    echo "Performing Kali Specific setup..."
+    echo "Installing: eyewitness + Aquatone Dependencies";
+    sudo apt-get install -y golang zaproxy;
+    sudo apt-get install -y firefox-esr chromium xvfb;
+    GO="go"
+fi
+
+
+echo "Installing some python stuff and ruby stuff"
+
+sudo apt-get install -y python3.7 python3.7-venv python3-dev python3-pip python-pip python3-venv python3-fuzzywuzzy python-fuzzywuzzy python-requests python3-requests python3-urllib3 python-urllib3 python-whois python3-whois python-texttable python3-texttable python-dnspython python3-dnspython ruby-dev;
+
+# pro gamer move, for xsstrike
+sudo -H pip3 install tld
+
+## Discover Scripts Dependencies
+echo "Installing Discover Scripts dependencies";
+DEBIAN_FRONTEND=noninteractive sudo apt-get install -y dnsrecon libjpeg-dev zlib1g-dev python-pyftpdlib python3-pyftpdlib python-pil python3-lxml python-lxml python3-pil
 
 
 ## RECON 
@@ -16,159 +89,415 @@ apt-get install -y git python3-dev python3-pip python-pip unzip seclists golang 
 ## All.txt
 if [ ! -d ${TOOL_DIR}/wordlists ]; then 
     echo "Setting up: all.txt";
-    mkdir ${TOOL_DIR}/wordlists;
-    wget https://gist.github.com/jhaddix/f64c97d0863a78454e44c2f7119c2a6a/raw/96f4e51d96b2203f19f6381c8c545b278eaa0837/all.txt -O ${TOOL_DIR}/wordlists/all.txt;
+    sudo mkdir ${TOOL_DIR}/wordlists;
+    sudo wget https://gist.github.com/jhaddix/f64c97d0863a78454e44c2f7119c2a6a/raw/96f4e51d96b2203f19f6381c8c545b278eaa0837/all.txt -O ${TOOL_DIR}/wordlists/all.txt;
+
+    sudo git clone https://github.com/minimaxir/big-list-of-naughty-strings.git ${TOOL_DIR}/wordlists/naughtystrings
+
+    # sudo rm -rf /tmp/seclists || true;
+    # sudo mkdir /tmp/seclists;
+    sudo wget https://github.com/danielmiessler/SecLists/archive/$SECLISTS_VER.zip -O ${TOOL_DIR}/wordlists/seclists.zip;
+    # sudo unzip -o -d /tmp/seclists /tmp/seclists/seclists.zip;
+    # sudo mv "/tmp/seclists/SecLists-${SECLISTS_VER}" /opt/wordlists/seclists
+    # sudo rm -rf /tmp/seclists;
+fi
+
+if [ ! -d ${TOOL_DIR}/payloads ]; then 
+    sudo mkdir ${TOOL_DIR}/payloads;
+    sudo git clone https://github.com/swisskyrepo/PayloadsAllTheThings.git ${TOOL_DIR}/payloads/PayloadsAllTheThings;
+fi 
+
+## Gobuster Source
+if [ ! -d ${TOOL_DIR}/gobuster ]; then 
+    echo "Setting up: Gobuster";
+    sudo git clone https://github.com/OJ/gobuster.git ${TOOL_DIR}/gobuster;
+    ## Amass Binary
+    sudo rm -rf /tmp/gobuster || true; 
+    sudo mkdir /tmp/gobuster;
+    sudo wget https://github.com/OJ/gobuster/releases/download/$GOBUSTER_VER/gobuster-linux-amd64.7z -O /tmp/gobuster/gobuster.7z;
+    cd /tmp/gobuster;
+    sudo 7z x gobuster.7z
+    sudo mv gobuster-linux-amd64/gobuster /usr/local/bin/gobuster;
+    cd -;
+    sudo chmod +x /usr/local/bin/gobuster;
+    sudo rm -rf /tmp/gobuster;
+fi
+
+## Ffuf Source
+if [ ! -d ${TOOL_DIR}/ffuf ]; then 
+    echo "Setting up: ffuf";
+    sudo git clone https://github.com/ffuf/ffuf.git ${TOOL_DIR}/ffuf;
+    cd ${TOOL_DIR}/ffuf;
+    sudo $GO get github.com/ffuf/ffuf;
+    sudo $GO build
+    sudo chmod +x ${TOOL_DIR}/ffuf/ffuf;
+    sudo ln -s ${TOOL_DIR}/ffuf/ffuf /usr/local/bin/ffuf
 fi
 
 ## Amass Source
 if [ ! -d ${TOOL_DIR}/amass ]; then 
     echo "Setting up: Amass";
-    git clone https://github.com/OWASP/Amass.git ${TOOL_DIR}/amass;
+    sudo git clone https://github.com/OWASP/Amass.git ${TOOL_DIR}/amass;
     ## Amass Binary
-    rm -rf /tmp/amass || true; 
-    mkdir /tmp/amass;
-    AMASS_NAME=amass_v3.2.3_linux_amd64
-    wget https://github.com/OWASP/Amass/releases/download/v3.2.3/$AMASS_NAME.zip -O /tmp/amass/amass.zip;
-    unzip -o -d /tmp/amass /tmp/amass/amass.zip;
-    mv /tmp/amass/$AMASS_NAME/amass /usr/local/bin/;
-    rm -rf /tmp/amass;
+    sudo rm -rf /tmp/amass || true; 
+    sudo mkdir /tmp/amass;
+    sudo wget https://github.com/OWASP/Amass/releases/download/${AMASS_VER}/$AMASS_NAME.zip -O /tmp/amass/amass.zip;
+    sudo unzip -o -d /tmp/amass /tmp/amass/amass.zip;
+    sudo mv /tmp/amass/${AMASS_NAME}/amass /usr/local/bin/;
+    sudo rm -rf /tmp/amass;
 fi
 
 ## MassDNS Source
 if [ ! -d ${TOOL_DIR}/massdns ]; then 
     echo "Setting up: MassDNS";
-    git clone https://github.com/blechschmidt/massdns.git ${TOOL_DIR}/massdns;
+    sudo git clone https://github.com/blechschmidt/massdns.git ${TOOL_DIR}/massdns;
     ## MassDNS Binary
     cd ${TOOL_DIR}/massdns;
-    make
-    chmod +x ${TOOL_DIR}/massdns/bin/massdns;
-    cp ${TOOL_DIR}/massdns/bin/massdns /usr/local/bin/
+    sudo make
+    sudo chmod +x ${TOOL_DIR}/massdns/bin/massdns;
+    sudo cp ${TOOL_DIR}/massdns/bin/massdns /usr/local/bin/
+    cd -;
 fi
 
-# Eyewitness + Aquatone Dependencies
-echo "Installing: eyewitness + Aquatone Dependencies";
-apt-get install -y firefox-esr chromium xvfb;
 
 ## EyeWitness Source
 if [ ! -d ${TOOL_DIR}/EyeWitness ]; then 
     echo "Setting up: EyeWitness";
-    git clone https://github.com/FortyNorthSecurity/EyeWitness.git ${TOOL_DIR}/EyeWitness;
+    sudo git clone https://github.com/FortyNorthSecurity/EyeWitness.git ${TOOL_DIR}/EyeWitness;
     ## EyeWitness Binary
-    bash ${TOOL_DIR}/EyeWitness/setup/setup.sh;
-    chmod +x ${TOOL_DIR}/EyeWitness/EyeWitness.py
-    ln -s ${TOOL_DIR}/EyeWitness/EyeWitness.py /usr/local/bin/eyewitness;
+    sudo bash ${TOOL_DIR}/EyeWitness/setup/setup.sh;
+    sudo chmod +x ${TOOL_DIR}/EyeWitness/EyeWitness.py
+    sudo ln -s ${TOOL_DIR}/EyeWitness/EyeWitness.py /usr/local/bin/eyewitness;
 fi
 
 ## Aquatone Source
 if [ ! -d ${TOOL_DIR}/aquatone ]; then 
     echo "Setting up: Aquatone";
-    git clone https://github.com/michenriksen/aquatone.git ${TOOL_DIR}/aquatone;
+    sudo git clone https://github.com/michenriksen/aquatone.git ${TOOL_DIR}/aquatone;
     ## Aquatone Binary
-    rm -rf /tmp/aquatone || true;
-    mkdir /tmp/aquatone;
-    wget https://github.com/michenriksen/aquatone/releases/download/v1.7.0/aquatone_linux_amd64_1.7.0.zip -O /tmp/aquatone/aquatone.zip;
-    unzip -o -d /tmp/aquatone /tmp/aquatone/aquatone.zip
-    mv /tmp/aquatone/aquatone /usr/local/bin/
-    rm -rf /tmp/aquatone;
+    sudo rm -rf /tmp/aquatone || true;
+    sudo mkdir /tmp/aquatone;
+    sudo wget https://github.com/michenriksen/aquatone/releases/download/v${AQUATONE_VER}/aquatone_linux_amd64_${AQUATONE_VER}.zip -O /tmp/aquatone/aquatone.zip;
+    sudo unzip -o -d /tmp/aquatone /tmp/aquatone/aquatone.zip
+    sudo mv /tmp/aquatone/aquatone /usr/local/bin/
+    sudo rm -rf /tmp/aquatone;
 fi
 
 ## Dirsearch Source
 if [ ! -d ${TOOL_DIR}/dirsearch ]; then 
     echo "Setting up: Dirsearch";
-    git clone https://github.com/maurosoria/dirsearch.git ${TOOL_DIR}/dirsearch;
+    sudo git clone https://github.com/maurosoria/dirsearch.git ${TOOL_DIR}/dirsearch;
     ## DirSearch Binary
-    ln -s ${TOOL_DIR}/dirsearch/dirsearch.py /usr/local/bin/dirsearch;
+    sudo ln -s ${TOOL_DIR}/dirsearch/dirsearch.py /usr/local/bin/dirsearch;
 fi
 
 ## GitRob Source
 if [ ! -d ${TOOL_DIR}/gitrob ]; then 
     echo "Setting up: GitRob";
-    git clone https://github.com/michenriksen/gitrob.git ${TOOL_DIR}/gitrob;
+    sudo git clone https://github.com/michenriksen/gitrob.git ${TOOL_DIR}/gitrob;
     ## GitRob Binary 
-    rm -rf /tmp/gitrob || true;
-    mkdir /tmp/gitrob;
-    wget https://github.com/michenriksen/gitrob/releases/download/v2.0.0-beta/gitrob_linux_amd64_2.0.0-beta.zip -O /tmp/gitrob/gitrobbeta.zip;
-    unzip -o -d /tmp/gitrob /tmp/gitrob/gitrobbeta.zip
-    mv /tmp/gitrob/gitrob /usr/local/bin/gitrobbeta;
-    rm -rf /tmp/gitrob;
+    sudo rm -rf /tmp/gitrob || true;
+    sudo mkdir /tmp/gitrob;
+    sudo wget https://github.com/michenriksen/gitrob/releases/download/v2.0.0-beta/gitrob_linux_amd64_2.0.0-beta.zip -O /tmp/gitrob/gitrobbeta.zip; 
+    sudo unzip -o -d /tmp/gitrob /tmp/gitrob/gitrobbeta.zip
+    sudo mv /tmp/gitrob/gitrob /usr/local/bin/gitrobbeta;
+    sudo rm -rf /tmp/gitrob;
 fi
 
 ## SubFinder Source
 if [ ! -d ${TOOL_DIR}/subfinder ]; then 
     echo "Setting up: SubFinder";
-    git clone https://github.com/subfinder/subfinder.git ${TOOL_DIR}/subfinder;
+    sudo git clone https://github.com/subfinder/subfinder.git ${TOOL_DIR}/subfinder;
+    cd ${TOOL_DIR}/subfinder;
     ## SubFinder Binary (Releases too old)
+    sudo $GO get github.com/subfinder/subfinder
+    sudo $GO build;
+    sudo chmod +x subfinder;
+    sudo ln -s ${TOOL_DIR}/subfinder/subfinder /usr/local/bin/subfinder;
+    cd -;
 fi
 
-## Assetfinder
-if [ ! -d ${TOOL_DIR}/assetfinder ]; then 
-    echo "Setting up: AssetFinder";
-    git clone https://github.com/tomnomnom/assetfinder.git ${TOOL_DIR}/assetfinder;
+
+function tomnomnom_install() {
+    tool="$1"
+    if [ ! -d "${TOOL_DIR}/$tool" ]; then
+        echo "Setting up: $1"
+        sudo git clone https://github.com/tomnomnom/$tool.git ${TOOL_DIR}/$tool;
+        cd ${TOOL_DIR}/$tool;
+        sudo $GO get -u github.com/tomnomnom/$tool;
+        sudo $GO build;
+        sudo chmod +x $tool;
+        sudo ln -s ${TOOL_DIR}/$tool/$tool /usr/local/bin/$tool;
+        cd -;
+    fi
+}
+
+tomnomnom_install assetfinder
+tomnomnom_install meg
+tomnomnom_install gf
+echo "source ${TOOL_DIR}/gf/gf-completion.bash" >> /root/.bashrc
+echo "source ${TOOL_DIR}/gf/gf-completion.bash" >> /home/$SUDOER/.bashrc
+sudo cp -R ${TOOL_DIR}/gf/examples /root/.gf;
+
+if [[ -d /home/${SUDOER} ]]; then 
+    sudo cp -R ${TOOL_DIR}/gf/examples /home/$SUDOER/.gf;
+    sudo chown -R ${SUDOER}:${SUDOER} /home/$SUDOER/.gf;
 fi
+tomnomnom_install gron
+tomnomnom_install waybackurls
+tomnomnom_install httprobe
+tomnomnom_install qsreplace
+tomnomnom_install concurl
+tomnomnom_install unfurl
 
 ## Arjun
 if [ ! -d ${TOOL_DIR}/arjun ]; then 
     echo "Setting up: Arjun";
-    git clone https://github.com/s0md3v/Arjun.git ${TOOL_DIR}/arjun;
+    sudo git clone https://github.com/s0md3v/Arjun.git ${TOOL_DIR}/arjun;
+    sudo chmod +x ${TOOL_DIR}/arjun/arjun.py
+    sudo ln -s ${TOOL_DIR}/arjun/arjun.py /usr/local/bin/arjun.py;
 fi
 
 ## Xsstrike
 if [ ! -d ${TOOL_DIR}/xsstrike ]; then 
     echo "Setting up: XSStrike";
-    git clone https://github.com/s0md3v/XSStrike.git ${TOOL_DIR}/xsstrike;
+    sudo git clone https://github.com/s0md3v/XSStrike.git ${TOOL_DIR}/xsstrike;
+    sudo chmod +x ${TOOL_DIR}/xsstrike/xsstrike.py 
+    sudo ln -s ${TOOL_DIR}/xsstrike/xsstrike.py /usr/local/bin/xsstrike.py;
+
+fi
+
+if [ ! -d ${TOOL_DIR}/webscreenshot ]; then 
+    echo "Setting up: WebScreenshot";
+    sudo git clone https://github.com/maaaaz/webscreenshot.git ${TOOL_DIR}/webscreenshot;
+    sudo ln -s ${TOOL_DIR}/webscreenshot/webscreenshot.py /usr/local/bin/webscreenshot.py;
 fi
 
 ## Testssl
 if [ ! -d ${TOOL_DIR}/testssl ]; then 
     echo "Setting up: Testssl";
-    git clone https://github.com/drwetter/testssl.sh.git ${TOOL_DIR}/testssl;
+    sudo git clone https://github.com/drwetter/testssl.sh.git ${TOOL_DIR}/testssl;
+    sudo ln -s ${TOOL_DIR}/testssl/testssl.sh /usr/local/bin/testssl.sh;
 fi
 
-## Discover Scripts Dependencies
-echo "Installing Discover Scripts dependencies";
-DEBIAN_FRONTEND=noninteractive apt-get install -y dnsrecon libjpeg-dev zlib1g-dev python-pyftpdlib python3-pyftpdlib python-pil python3-lxml recon-ng python-lxml python3-pil urlcrazy
 
-## Discover Scripts Source
+## Cloudflare Enum
+if [ ! -d ${TOOL_DIR}/cloudflare_enum ]; then 
+    echo "Setting up: Cloudflare Enum";
+    sudo git clone https://github.com/mandatoryprogrammer/cloudflare_enum.git ${TOOL_DIR}/cloudflare_enum;
+    sudo chmod +x ${TOOL_DIR}/cloudflare_enum/cloudflare_enum.py
+    sudo ln -s ${TOOL_DIR}/cloudflare_enum/cloudflare_enum.py /usr/local/bin/cloudflare_enum.py;
+fi
+
+if [ ! -d ${TOOL_DIR}/lazyrecon ]; then 
+    echo "Setting up: LazyRecon";
+    sudo git clone https://github.com/nahamsec/LazyRecon.git ${TOOL_DIR}/lazyrecon;
+    sudo chmod +x ${TOOL_DIR}/lazyrecon/lazyrecon.sh
+    sudo ln -s ${TOOL_DIR}/lazyrecon/lazyrecon.sh /usr/local/bin/lazyrecon.sh;
+fi
+
+if [ ! -d ${TOOL_DIR}/knock ]; then 
+    echo "Setting up: Knock";
+    sudo git clone https://github.com/guelfoweb/knock.git ${TOOL_DIR}/knock;
+    cd ${TOOL_DIR}/knock;
+    sudo pip install . || echo "Failed to install knock";
+    # knock uses setup.py
+    cd -;
+fi
+
+if [ ! -d ${TOOL_DIR}/lazys3 ]; then 
+    echo "Setting up: lazys3";
+    sudo git clone https://github.com/nahamsec/lazys3.git ${TOOL_DIR}/lazys3;
+    sudo chmod +x ${TOOL_DIR}/lazys3/lazys3.rb
+    sudo ln -s ${TOOL_DIR}/lazys3/lazys3.rb /usr/local/bin/lazys3.rb;
+fi
+
+if [ ! -d ${TOOL_DIR}/bucketeers ]; then 
+    echo "Setting up: bucketeers";
+    sudo git clone https://github.com/tomdev/teh_s3_bucketeers.git ${TOOL_DIR}/bucketeers;
+    sudo chmod +x ${TOOL_DIR}/bucketeers/bucketeer.sh
+    sudo ln -s ${TOOL_DIR}/bucketeers/bucketeer.sh /usr/local/bin/bucketeer.sh;
+fi
+
+if [ ! -d ${TOOL_DIR}/wpscan ]; then 
+    echo "Setting up: wpscan";
+    sudo git clone https://github.com/wpscanteam/wpscan.git ${TOOL_DIR}/wpscan;
+    cd ${TOOL_DIR}/wpscan;
+    # sudo chown -R $SUDOER:$SUDOER ${TOOL_DIR}/wpscan
+    # sudo gem install bundler ffi nokogiri;
+    # sudo chown -R $SUDOER:$SUDOER /home/$SUDOER/.*
+    # sudo su - $SUDOER -c "cd ${TOOL_DIR}/wpscan && bundle install --without test" || echo "Error installing wpscan..."
+    cd -;
+fi
+
+
+## WhatWeb
+if [ ! -d ${TOOL_DIR}/whatweb ]; then 
+    echo "Setting up: whatweb";
+    sudo git clone https://github.com/urbanadventurer/WhatWeb.git ${TOOL_DIR}/whatweb;
+    sudo chmod +x ${TOOL_DIR}/whatweb/whatweb
+    sudo ln -s ${TOOL_DIR}/whatweb/whatweb /usr/local/bin/whatweb;
+fi
+
+if [ ! -d ${TOOL_DIR}/theHarvester ]; then 
+    echo "Setting up: theHarvester";
+    sudo git clone https://github.com/laramies/theHarvester.git ${TOOL_DIR}/theHarvester;
+    sudo chmod +x ${TOOL_DIR}/theHarvester/theHarvester
+    sudo python3.7 -m venv ${TOOL_DIR}/theHarvester/.venv;
+    sudo -H bash -c "source ${TOOL_DIR}/theHarvester/.venv/bin/activate && pip install -r ${TOOL_DIR}/theHarvester/requirements.txt" || true;
+    echo '#!/bin/bash' | sudo tee /usr/local/bin/theHarvester;
+    echo "source ${TOOL_DIR}/theHarvester/.venv/bin/activate" | sudo tee -a /usr/local/bin/theHarvester;
+    echo "python ${TOOL_DIR}/theHarvester/theHarvester.py" | sudo tee -a /usr/local/bin/theHarvester;
+    sudo chmod +x /usr/local/bin/theHarvester;
+fi
+
+
+
+# Discover Scripts Source
+# Discover Scripts are difficult, maybe another time
 if [ ! -d /opt/discover ]; then 
+    sudo mkdir /root/.recon-ng
+    if [[ -d /home/${SUDOER} ]]; then 
+        sudo mkdir /home/$SUDOER/.recon-ng
+        sudo chown ${SUDOER}:${SUDOER} /home/$SUDOER/.recon-ng
+    fi
     echo "Setting up: Discover Scripts";
-    git clone https://github.com/leebaird/discover.git /opt/discover;
-    cd /opt/discover;
-    ## Discover Scripts Needs Egress-Assess Preinstalled for Non-interactive
-    echo "Setting up: Egress-Assess (on behalf of discover scripts)"
-    git clone https://github.com/ChrisTruncer/Egress-Assess.git /opt/Egress-Assess;
-    printf "\n\n\n\n\n\n\n" | /opt/Egress-Assess/setup/setup.sh
-    mv server.pem ../Egress-Assess/
-    rm impacket*
-    ## Discover Scripts Install
-    DEBIAN_FRONTEND=noninteractive ./update.sh || echo "Discover scripts had issues. Continueing"
+    sudo git clone https://github.com/leebaird/discover.git /opt/discover;
+    echo "Not installing discover scripts"
+    # cd /opt/discover;
+    # ## Discover Scripts Needs Egress-Assess Preinstalled for Non-interactive
+    # echo "Setting up: Egress-Assess (on behalf of discover scripts)"
+    # sudo git clone https://github.com/ChrisTruncer/Egress-Assess.git /opt/Egress-Assess;
+    # printf "\n\n\n\n\n\n\n" | sudo -H /opt/Egress-Assess/setup/setup.sh
+    # sudo mv server.pem ../Egress-Assess/
+    # sudo rm impacket*
+    # ## Discover Scripts Install
+    # sudo -H DEBIAN_FRONTEND=noninteractive ./update.sh || echo "Discover scripts had issues. Continueing"
 fi
+
+# 
+if [ ! -d ${TOOL_DIR}/recon-ng ]; then 
+    echo "Setting up: Recon-ng"
+    sudo git clone https://github.com/lanmaster53/recon-ng.git ${TOOL_DIR}/recon-ng;
+    sudo -H pip3 install -r ${TOOL_DIR}/recon-ng/REQUIREMENTS;
+    sudo chmod +x ${TOOL_DIR}/recon-ng/recon-ng;
+    sudo chmod +x ${TOOL_DIR}/recon-ng/recon-cli;
+    sudo chmod +x ${TOOL_DIR}/recon-ng/recon-web;
+    sudo ln -s ${TOOL_DIR}/recon-ng/recon-ng /usr/local/bin/recon-ng;
+    sudo ln -s ${TOOL_DIR}/recon-ng/recon-cli /usr/local/bin/recon-cli;
+    sudo ln -s ${TOOL_DIR}/recon-ng/recon-web /usr/local/bin/recon-web;
+    recon-ng -r /opt/discover/resource/recon-ng-modules-install.rc || true;
+    sudo -H recon-ng -r /opt/discover/resource/recon-ng-modules-install.rc || true;
+fi 
+
+if [ ! -d ${TOOL_DIR}/goprox ]; then 
+    echo "Setting up: Goprox";
+    sudo git clone https://github.com/3lpsy/goprox.git ${TOOL_DIR}/goprox;
+fi
+
+# Teknogeek Stuff
+if [ ! -d ${TOOL_DIR}/ssrf-sheriff ]; then 
+    echo "Setting up: ssrf-sheriff";
+    sudo git clone https://github.com/teknogeek/ssrf-sheriff.git ${TOOL_DIR}/ssrf-sheriff;
+    cd ${TOOL_DIR}/ssrf-sheriff;
+    sudo $GO get github.com/teknogeek/ssrf-sheriff
+    sudo cp config/base.example.yaml config/base.yaml
+    sudo $GO build
+    sudo ln -s ${TOOL_DIR}/ssrf-sheriff/ssrf-sheriff /usr/local/bin/ssrf-sheriff
+fi
+
+if [ ! -d ${TOOL_DIR}/fresh.py ]; then 
+    echo "Setting up: fresh.py";
+    sudo git clone https://github.com/teknogeek/fresh.py.git ${TOOL_DIR}/fresh.py;
+    cd ${TOOL_DIR}/fresh.py;
+    sudo -H pip3 install -r ${TOOL_DIR}/fresh.py/requirements.txt
+
+    echo '#!/bin/bash' | sudo tee /usr/local/bin/fresh.py
+    echo "python3 ${TOOL_DIR}/fresh.py/fresh.py --clean /opt/fresh.py/clean_regex.txt \$@" | sudo tee -a /usr/local/bin/fresh.py
+    sudo chmod +x /usr/local/bin/fresh.py
+    # sudo ln -s ${TOOL_DIR}/fresh.py/fresh.py /usr/local/bin/fresh.py
+fi
+
+
+if [ ! -d ${TOOL_DIR}/ssrfmap ]; then 
+    sudo git clone https://github.com/swisskyrepo/SSRFmap.git ${TOOL_DIR}/ssrfmap;
+    cd ${TOOL_DIR}/ssrfmap;
+    sudo -H pip3 install -r ${TOOL_DIR}/ssrfmap/requirements.txt;
+    sudo chmod +x ${TOOL_DIR}/ssrfmap/ssrfmap.py;
+    echo '#!/bin/bash' | sudo tee /usr/local/bin/ssrfmap.py;
+    echo "python3 ${TOOL_DIR}/ssrfmap/ssrfmap.py" | sudo tee -a /usr/local/bin/ssrfmap.py;
+    sudo chmod +x /usr/local/bin/ssrfmap.py;
+fi 
+
+if [ ! -d ${TOOL_DIR}/gitleaks ]; then 
+    sudo git clone https://github.com/zricethezav/gitleaks.git ${TOOL_DIR}/gitleaks;
+    cd ${TOOL_DIR}/gitleaks
+    sudo $GO get -u github.com/zricethezav/gitleaks;
+    sudo $GO build
+    sudo ln -s ${TOOL_DIR}/gitleaks/gitleaks /usr/local/bin/gitleaks;
+fi 
+
+if [ ! -d ${TOOL_DIR}/interlace ]; then 
+    sudo git clone https://github.com/codingo/Interlace.git ${TOOL_DIR}/interlace;
+    cd ${TOOL_DIR}/interlace;
+    sudo python3 setup.py install
+fi 
 
 ## Pentesting
 if [ ! -d ${TOOL_DIR}/nishang ]; then 
     echo "Setting up: Nishang";
-    git clone https://github.com/samratashok/nishang.git ${TOOL_DIR}/nishang;
+    sudo git clone https://github.com/samratashok/nishang.git ${TOOL_DIR}/nishang;
 fi
 
-## Desktop
-# Mate/xfce Don't work with spice, use gnome :/
-# vgamem may need to be 65536 or 65536/2
-# spice channel needs to exist
+if [ ! -d ${TOOL_DIR}/misc ]; then 
+    echo "Setting up: misc";
+    sudo mkdir ${TOOL_DIR}/misc;
+    sudo git clone https://github.com/tomnomnom/dotfiles.git ${TOOL_DIR}/misc/tomnomnom.dotfiles;
+    sudo git clone https://github.com/tomnomnom/hacks.git ${TOOL_DIR}/misc/tomnomnom.hacks;
+    sudo git clone https://github.com/nahamsec/recon_profile.git ${TOOL_DIR}/misc/nahamsec.recon_profile;
+fi
 
-echo "Updating package repositories";
-apt-get update
-echo "Installing gnome";
-DEBIAN_FRONTEND=noninteractive apt-get install -y gnome-core kali-defaults kali-root-login desktop-base xinit;
-echo "Setting up: gnome";
-gsettings set org.gnome.desktop.screensaver idle-activation-enabled false || echo 'Failed Gnome Setting';
-gsettings set org.gnome.desktop.screensaver lock-enabled false || echo 'Failed Gnome Setting';
-gsettings set org.gnome.desktop.screensaver lock-delay 0 || echo 'Failed Gnome Setting';
-gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type 'nothing' || echo 'Failed Gnome Setting';
-gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-battery-type 'nothing' || echo 'Failed Gnome Setting';
-gsettings set org.gnome.settings-daemon.plugins.power idle-dim false || echo 'Failed Gnome Setting';
-gsettings set org.gnome.desktop.session idle-delay 0 || echo 'Failed Gnome Setting';
-gsettings set org.gnome.desktop.screensaver lock-enabled true || echo 'Failed Gnome Setting';
 
-systemctl enable spice-vdagent || true;
-systemctl enable spice-vdagentd || true;
+echo 'export PS1="\[$(tput bold)\]\[\033[38;5;88m\]@\[$(tput sgr0)\]\[\033[38;5;196m\]\h\[$(tput sgr0)\]\[$(tput sgr0)\]\[\033[38;5;15m\] \[$(tput bold)\]\[$(tput sgr0)\]\[\033[38;5;105m\]\u\[$(tput sgr0)\]\[$(tput sgr0)\]\[\033[38;5;15m\] \[$(tput bold)\]\[$(tput sgr0)\]\[\033[38;5;45m\]\W\[$(tput sgr0)\]\[$(tput sgr0)\]\[\033[38;5;15m\] \[$(tput bold)\]\[$(tput sgr0)\]\[\033[38;5;13m\]>\[$(tput sgr0)\]\[$(tput sgr0)\]\[\033[38;5;15m\] \[$(tput sgr0)\]"' | sudo tee -a /root/.bashrc || echo "Issue with: setting ps1"
 
-echo "Custom installs complete";
+if [[ -d /home/${SUDOER} ]]; then 
+    sudo chown -R ${SUDOER}:${SUDOER} ${TOOL_DIR}/*
+    echo 'export PS1="\[$(tput bold)\]\[\033[38;5;88m\]@\[$(tput sgr0)\]\[\033[38;5;196m\]\h\[$(tput sgr0)\]\[$(tput sgr0)\]\[\033[38;5;15m\] \[$(tput bold)\]\[$(tput sgr0)\]\[\033[38;5;105m\]\u\[$(tput sgr0)\]\[$(tput sgr0)\]\[\033[38;5;15m\] \[$(tput bold)\]\[$(tput sgr0)\]\[\033[38;5;45m\]\W\[$(tput sgr0)\]\[$(tput sgr0)\]\[\033[38;5;15m\] \[$(tput bold)\]\[$(tput sgr0)\]\[\033[38;5;13m\]>\[$(tput sgr0)\]\[$(tput sgr0)\]\[\033[38;5;15m\] \[$(tput sgr0)\]"' | sudo tee -a /home/$SUDOER/.bashrc || echo "Issue with: setting ps1"
+    sudo chown ${SUDOER}:${SUDOER} /home/$SUDOER/.bashrc;
+fi
+
+
+# This is only installed when building for no-ubunut (kali on vagrant. see vm-builds/kali-bounty)
+if [  -n "$(uname -a | grep -i ubuntu)" ]; then 
+    echo "Skipping desktop install for ubuntu"
+else 
+    ## Desktop
+    # Mate/xfce Don't work with spice, use gnome :/
+    # vgamem may need to be 65536 or 65536/2
+    # spice channel needs to exist
+
+    echo "Updating package repositories";
+    apt-get update
+    echo "Installing gnome";
+    DEBIAN_FRONTEND=noninteractive sudo apt-get install -y gnome-core kali-defaults kali-root-login desktop-base xinit;
+    echo "Setting up: gnome";
+    sudo gsettings set org.gnome.desktop.screensaver idle-activation-enabled false || echo 'Failed Gnome Setting';
+    sudo gsettings set org.gnome.desktop.screensaver lock-enabled false || echo 'Failed Gnome Setting';
+    sudo gsettings set org.gnome.desktop.screensaver lock-delay 0 || echo 'Failed Gnome Setting';
+    sudo gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type 'nothing' || echo 'Failed Gnome Setting';
+    sudo gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-battery-type 'nothing' || echo 'Failed Gnome Setting';
+    sudo gsettings set org.gnome.settings-daemon.plugins.power idle-dim false || echo 'Failed Gnome Setting';
+    sudo gsettings set org.gnome.desktop.session idle-delay 0 || echo 'Failed Gnome Setting';
+    sudo gsettings set org.gnome.desktop.screensaver lock-enabled true || echo 'Failed Gnome Setting';
+    echo "/usr/sbin/gdm3" > /etc/X11/default-display-manager
+    sudo systemctl disable lightdm || echo "Issue with: systemctl disable lightdm";
+    sudo apt-get purge -y lightdm || echo "Issue with: apt-get purge -y lightdm ";
+    sudo apt-get purge -y lightdm || echo "Issue with: apt-get purge -y lightdm ";
+    sudo apt-get purge -y gdm3 || echo "Issue with: apt-get purge -y gdm3";
+    sudo apt-get install -y gdm3 || echo "Issue: with apt-get install -y gdm3";
+    sudo apt-get install -y gnome-shell-extension-dashtodock || echo "Issue with: apt-get install -y gnome-shell-extension-dashtodock"
+    sudo gsettings set org.gnome.shell.extensions.dash-to-dock dash-max-icon-size 48 || echo "Issue with: gsettings set org.gnome.shell.extensions.dash-to-dock dash-max-icon-size 48"
+    sudo systemctl enable gdm3 || echo "Issue: with systemctl enable gdm3";
+    sudo systemctl enable spice-vdagent || true;
+    sudo systemctl enable spice-vdagentd || true;
+fi

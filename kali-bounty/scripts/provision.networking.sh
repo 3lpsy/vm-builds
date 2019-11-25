@@ -9,6 +9,8 @@ export DEBIAN_FRONTEND=noninteractive;
 # rm -f /lib/udev/rules.d/75-persistent-net-generator.rules;
 # rm -rf /dev/.udev/ /var/lib/dhcp/*;
 
-echo "Installing Network Manager";
-apt-get install -y network-manager
-systemctl enable network-manager
+# echo "Installing Network Manager";
+# apt-get install -y network-manager
+# systemctl enable network-manager
+
+apt-get install openresolv -y 
