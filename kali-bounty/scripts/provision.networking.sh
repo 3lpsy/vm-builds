@@ -15,13 +15,13 @@ export DEBIAN_FRONTEND=noninteractive;
 
 echo "Installing openresolv"
 sudo apt-get install openresolv -y
-sudo apt install software-properties-common -y 
-echo "Adding Wireguard repo" 
-printf "\n" | sudo add-apt-repository ppa:wireguard/wireguard -y 
+# sudo apt install software-properties-common -y 
+# echo "Adding Wireguard repo" 
+# printf "\n" | sudo add-apt-repository ppa:wireguard/wireguard -y  || true
 echo "Updating" 
 sudo apt-get update 
 echo "Installing Wireguard" 
-sudo apt-get install -y wireguard-dkms wireguard-tools;
+sudo apt-get install -y wireguard-dkms wireguard-tools || sudo apt-get install -y wireguard;
 
 WG_CONF=$(cat << EOF
 [Interface]
